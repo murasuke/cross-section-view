@@ -4,63 +4,20 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1.0, ,user-scalable=no" />
   <script type="module">
-    import {calcTileInfo, loadTile, getElevation} from './js/elevation.js';
+    import {getElevations} from './js/elevation.js';
     // 組み込み関数は変数に代入できないため、アロー関数でラップ
     const $ = p => document.querySelector(p);
-
     $('#exec').addEventListener('click', async () => {
       const [lat1, lng1] = [$('#lat1').value, $('#lng1').value];
       const [lat2, lng2] = [$('#lat2').value, $('#lng2').value];
 
-      // const zoom = $('#zoom').value;
-      // const ds = $('#source').value;
-      // 経度、緯度から標高を求める
-      for (let zoom = 0; zoom <= 15; zoom++) {
-        const tile1 = calcTileInfo(lat1, lng1, zoom);
-        const tile2 = calcTileInfo(lat2, lng2, zoom);
-        // 2つのPixcelの位置が128～256になるまでzoomを増やす
-        const distance = Math.sqrt((tile1.pX - tile2.px) ** 2 + (tile1.pY - tile2.pY) ** 2);
-        if (distance > 128) {
-          break;
-        }
-      }
+      const elevations = await getElevations(lat1, lng1, lat2, lng2);
+      console.log(elevations);
+      var result = elevations.reduce(function (accumulator, currentValue) {
+          return accumulator + "\n" + new String(currentValue);
+      });
 
-      // 2つの間の座標を計算して配列のセットする(再帰呼び出しして2^8個まで反復？)
-
-      // 配列から値を取り出して、高さを取得し、別の配列に追加する
-
-
-
-
-      const dataType = ds.split(',')[0];
-      const ext = ds.split(',')[1];
-
-      const img = loadTile(x,y,zoom,{dataType, ext});
-
-      // canvasに画像を表示して、指定座標に●を表示する
-      const board = $('#board');
-      const ctx = board.getContext('2d');
-
-      img.onload = () => {
-        // 指定座標にオレンジの点を表示
-        ctx.drawImage(img, 0, 0);
-        ctx.beginPath();
-        ctx.arc(
-          pX,        // 中心点X
-          pY,        // 中心点Y
-          4,            // 半径(radius)
-          0,            // 円の描画開始角度(startAngle)
-          2 * Math.PI,  // 円の描画終了角度(endAngle)
-        );
-        ctx.fillStyle = "Orange";
-        ctx.fill();
-        ctx.stroke();
-      };
-
-      // 標高の取得
-      const h = await getElevation(35.36072, 138.72743);
-      console.log(h);
-      $('#elevation').innerText = h;
+      $('#result').value = result;
     });
   </script>
   <style>
@@ -76,16 +33,13 @@
   <h2>指定した(緯度、経度、zoomlevel)から、国土地理院タイルを読み込むサンプル</h2>
   <div style="margin-left:1em;">
     <div>緯度経度1</span><input type="number" id="lat1" value="35.36072" />：<input type="number" id="lng1" value="138.72743" /> </div>
-    <div>緯度経度2</span><input type="number" id="lat2" value="35.36072" />：<input type="number" id="lng2" value="138.72743" /> </div>
+    <div>緯度経度2</span><input type="number" id="lat2" value="35.352780" />：<input type="number" id="lng2" value="138.613012" /> </div>
     <input type="button" id="exec" value="断面図表示">
   </div>
-  <div style="margin-left:2em">
-    <canvas id="board" width="512" height="512"></canvas>
+  <div style="margin:2em">
+    <textarea id="result" rows="40" cols="50"></textarea>
   </div>
-  <div style="margin-left:2em">
-    <span>zoom</span><input type="number" id="zoom" style="width: 60px" value="14"  readonly />
-    標高：<span id="elevation"></span>m
-  </div>
+
   <div style="margin:2em;">
     <a href="https://maps.gsi.go.jp/development/siyou.html">地理院タイル仕様</a><br>
     <a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank">地理院タイル</a><br>

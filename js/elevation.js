@@ -115,7 +115,7 @@ export const calcTileInfo = (lat, lng, z) => {
  * @param { {dataType: string, ext?: string} } option
  * @returns
  */
-export const loadTile = (x, y, z, option) => {
+export const loadTile = async (x, y, z, option) => {
   const { dataType, ext } = option;
 
   const url = `https://cyberjapandata.gsi.go.jp/xyz/${dataType}/${z}/${x}/${y}.${
@@ -124,7 +124,19 @@ export const loadTile = (x, y, z, option) => {
   const img = new Image();
   img.setAttribute('crossorigin', 'anonymous');
   img.src = url;
-  return img;
+
+  const canvas = document.createElement('canvas');
+  [canvas.width, canvas.height] = [256, 256];
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+  // onloadは非同期で発生するため、Promise()でラップして返す
+  return new Promise((resolve, reject) => {
+    img.onload = () => {
+      ctx.drawImage(img, 0, 0);
+
+      resolve(ctx);
+    };
+  });
 };
 
 /**
@@ -133,51 +145,95 @@ export const loadTile = (x, y, z, option) => {
  * @param {number} lng
  * @returns {Promise<number>}
  */
-export const getElevation = async (lat, lng) => {
+export const getElevation = (pX, pY, ctx) => {
   const z = 15;
 
-  // 描画用のCanvasを用意する
-  const canvas = document.createElement('canvas');
-  [canvas.width, canvas.height] = [256, 256];
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const { data } = ctx.getImageData(0, 0, 256, 256);
+  // 1pxあたり4Byte(RGBA)
+  const idx = pY * 256 * 4 + pX * 4;
+  const r = data[idx + 0];
+  const g = data[idx + 1];
+  const b = data[idx + 2];
 
-  // タイルを取得
-  const { x, y, pX, pY } = calcTileInfo(lat, lng, z);
-  // タイルを読み込む<img>タグを作成
-  const img = loadTile(x, y, z, { dataType: 'dem5a_png' });
+  // 標高に換算
+  let h = undefined;
+  const resolution = 0.01; // 分解能
 
-  // onloadは非同期で発生するため、Promise()でラップして返す
-  return new Promise((resolve, reject) => {
-    img.onload = () => {
-      ctx.drawImage(img, 0, 0);
-      // ピクセルカラー配列を取得
-      const { data } = ctx.getImageData(0, 0, 256, 256);
-      // 1pxあたり4Byte(RGBA)
-      const idx = pY * 256 * 4 + pX * 4;
-      const r = data[idx + 0];
-      const g = data[idx + 1];
-      const b = data[idx + 2];
+  // 定義に従い計算
+  // x = 2^16R + 2^8G + B
+  // x < 2^23の場合　h = xu
+  // x = 2^23の場合　h = NA
+  // x > 2^23の場合　h = (x-2^24)u
+  // uは標高分解能（0.01m）
+  const x = r * 2 ** 16 + g * 2 ** 8 + b;
+  if (x < 2 ** 23) {
+    h = x * resolution;
+  } else if (x == 2 ** 23) {
+    h = undefined;
+  } else if (x > 2 ** 23) {
+    h = x - 2 ** 24 * resolution;
+  }
 
-      // 標高に換算
-      let h = undefined;
-      const resolution = 0.01; // 分解能
+  return h;
+};
 
-      // 定義に従い計算
-      // x = 2^16R + 2^8G + B
-      // x < 2^23の場合　h = xu
-      // x = 2^23の場合　h = NA
-      // x > 2^23の場合　h = (x-2^24)u
-      // uは標高分解能（0.01m）
-      const x = r * 2 ** 16 + g * 2 ** 8 + b;
-      if (x < 2 ** 23) {
-        h = x * resolution;
-      } else if (x == 2 ** 23) {
-        h = undefined;
-      } else if (x > 2 ** 23) {
-        h = x - 2 ** 24 * resolution;
-      }
+export const getElevations = async (lat1, lng1, lat2, lng2) => {
+  let tile1, tile2, zoom;
+  // 経度、緯度から標高を求める
+  for (zoom = 0; zoom <= 15; zoom++) {
+    tile1 = calcTileInfo(lat1, lng1, zoom);
+    tile2 = calcTileInfo(lat2, lng2, zoom);
+    // 2つのPixcelの位置が128～256になるまでzoomを増やす
+    const distance = Math.sqrt(
+      (tile1.pX - tile2.pX) ** 2 + (tile1.pY - tile2.pY) ** 2
+    );
+    if (distance > 128) {
+      break;
+    }
+  }
 
-      resolve(h);
-    };
-  });
+  // 2つの間の座標の間の点を求める(再帰呼び出しして2^8個まで反復？)
+  const calcLine = (p1x, p1y, p2x, p2y, depth) => {
+    if (depth > 4) {
+      return [p1x, p1y];
+    }
+    const x = (p1x + p2x) / 2;
+    const y = (p1y + p2y) / 2;
+    // return [x, y];
+    depth += 1;
+    return [
+      ...calcLine(p1x, p1y, x, y, depth),
+      ...calcLine(x, y, p2x, p2y, depth),
+    ];
+  };
+
+  const [p1x, p1y] = [tile1.pX, tile1.pY];
+  const [p2x, p2y] = [tile2.pX, tile2.pY];
+  const line = [...calcLine(p1x, p1y, p2x, p2y, 0), p2x, p2y];
+
+  // 配列から値を取り出して、高さを取得し、別の配列に追加する
+  let tiles = [];
+  const elevations = [];
+  for (let i = 0; i < line.length; i += 2) {
+    const x = line[i];
+    const y = line[i + 1];
+    const tileCoordX = Math.floor(x / 256);
+    const tileCoordY = Math.floor(y / 256);
+    const imageCoordX = Math.floor(x - tileCoordX * 256);
+    const imageCoordY = Math.floor(y - tileCoordY * 256);
+
+    let context = null;
+    if (!tiles[`${tileCoordX}_${tileCoordY}`]) {
+      // 画像を読み込んで、標高を取得していく
+      context = await loadTile(tileCoordX, tileCoordY, zoom, {
+        dataType: 'dem5a_png',
+      });
+      tiles[`${tileCoordX}_${tileCoordY}`] = context;
+    } else {
+      context = tiles[`${tileCoordX}_${tileCoordY}`];
+    }
+    const h = getElevation(imageCoordX, imageCoordY, context);
+    elevations.push(h);
+  }
+  return elevations;
 };
