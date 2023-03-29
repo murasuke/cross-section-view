@@ -194,7 +194,7 @@ export const getElevations = async (lat1, lng1, lat2, lng2) => {
 
   // 2つの間の座標の間の点を求める(再帰呼び出しして2^8個まで反復？)
   const calcLine = (p1x, p1y, p2x, p2y, depth) => {
-    if (depth > 4) {
+    if (depth >= 7) {
       return [p1x, p1y];
     }
     const x = (p1x + p2x) / 2;
