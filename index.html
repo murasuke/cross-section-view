@@ -1,19 +1,23 @@
 <!DOCTYPE html>
 <html lang="ja">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1.0, ,user-scalable=no" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.2.1/chart.umd.js"></script>
   <script type="module">
-    import {getElevations} from './js/elevation.js';
+    import { getElevations, getDistance } from './js/elevation.js';
     // 組み込み関数は変数に代入できないため、アロー関数でラップ
     const $ = p => document.querySelector(p);
     $('#exec').addEventListener('click', async () => {
       const [lat1, lng1] = [$('#lat1').value, $('#lng1').value];
       const [lat2, lng2] = [$('#lat2').value, $('#lng2').value];
+      const distance = getDistance(lat1, lng1, lat2, lng2);
 
       const elevations = await getElevations(lat1, lng1, lat2, lng2);
       const ctx = $('#chart');
+
+      const ratio = distance / elevations.length;
 
       const chart = new Chart(ctx, {
         type: 'line',
@@ -21,33 +25,64 @@
           labels: [...Array(elevations.length)].map((_, i) => i),
           datasets: [{
             label: 'Mt.Fuji',
-            backgroundColor: 'rgb(255, 99, 132)',
-            borderColor: 'rgb(255, 99, 132)',
+            backgroundColor: 'rgb(123, 99, 200)',
+            borderColor: 'rgb(123, 99, 200)',
             data: elevations,
+            lineTension: 1,
           }]
         },
-        options: {}
-      })
+        options: {
+          scales: {
+            //以下追加設定
+            x: {
+              scaleLabel: {
+                display: true,
+                labelString: "km"
+              },
+              ticks: {
+                callback: function (val, index) {
+                  return index % 2 === 0 ? (val * ratio).toFixed(2) + 'km' : '';
+                },
+                maxRotation: 0,
+                minRotation: 0,
+              }
+            },
+            y: {
+              min: 0,
+              ticks: {
+              callback: function(val, index) {
+                  return val + 'm';
+                }
+            }
+            },
 
-      $('#result').value = elevations.reduce(function (accumulator, currentValue) {
-          return accumulator + "\n" + new String(currentValue);
+          }
+        }
+      })
+      $('#result').value = `距離：${distance.toFixed(2)}km\n`;
+      $('#result').value += elevations.reduce(function (accumulator, currentValue) {
+        return accumulator + '\n' + new String(currentValue);
       });;
     });
   </script>
   <style>
     input[type=number] {
-      text-align:right;
-      vertical-align:middle;
-      width:8em;
+      text-align: right;
+      vertical-align: middle;
+      width: 8em;
     }
+
   </style>
 </head>
+
 <body>
   <h2>指定した2点間の高さをグラフ化するサンプル</h2>
   <div style="margin-left:1em;">
-    <div>緯度経度1</span><input type="number" id="lat1" value="35.446575" />：<input type="number" id="lng1" value="138.645945" /> </div>
-  <div>緯度経度2</span><input type="number" id="lat2" value="35.303806" />：<input type="number" id="lng2" value="138.793402" /> </div>
-    <input type="button" id="exec" value="断面図表示">
+    <div>緯度経度1</span><input type="number" id="lat1" value="35.446575" />：<input type="number" id="lng1"
+        value="138.645945" /> </div>
+    <div>緯度経度2</span><input type="number" id="lat2" value="35.303806" />：<input type="number" id="lng2"
+        value="138.793402" /> </div>
+    <div><input type="button" id="exec" value="断面図表示" style="margin:1em;"></div>
   </div>
   <div style="margin:2em">
     <canvas id="chart"></canvas><br>
@@ -59,4 +94,5 @@
     <a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank">地理院タイル</a><br>
   </div>
 </body>
+
 </html>
