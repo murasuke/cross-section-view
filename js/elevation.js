@@ -113,7 +113,7 @@ export const calcTileInfo = (lat, lng, z) => {
  * @param {number} y
  * @param {number} z
  * @param { {dataType: string, ext?: string} } option
- * @returns
+ * @returns {Promise<CanvasRenderingContext2D>}
  */
 export const loadTile = async (x, y, z, option) => {
   const { dataType, ext } = option;
@@ -143,6 +143,7 @@ export const loadTile = async (x, y, z, option) => {
  * dem5aから標高を取得
  * @param {number} lat
  * @param {number} lng
+ * @param {CanvasRenderingContext2D}
  * @returns {Promise<number>}
  */
 export const getElevation = (pX, pY, ctx) => {
@@ -177,6 +178,38 @@ export const getElevation = (pX, pY, ctx) => {
   return h;
 };
 
+/**
+ * 2つの間の座標の間の点を求める(再帰呼び出しして2^8個まで反復？)
+ * 傾きが垂直に近いと計算がしづらいので、2点間を再帰で分割する
+ * @param {*} p1x
+ * @param {*} p1y
+ * @param {*} p2x
+ * @param {*} p2y
+ * @param {*} depth
+ * @returns
+ */
+const pointToLine = (p1x, p1y, p2x, p2y, depth) => {
+  if (depth >= 7) {
+    return [p1x, p1y];
+  }
+  const x = (p1x + p2x) / 2;
+  const y = (p1y + p2y) / 2;
+  // return [x, y];
+  depth += 1;
+  return [
+    ...pointToLine(p1x, p1y, x, y, depth),
+    ...pointToLine(x, y, p2x, p2y, depth),
+  ];
+};
+
+/**
+ * 方向を配列で取得する
+ * @param {number} lat1
+ * @param {number} lng1
+ * @param {number} lat2
+ * @param {number} lng2
+ * @returns
+ */
 export const getElevations = async (lat1, lng1, lat2, lng2) => {
   let tile1, tile2, zoom;
   // 経度、緯度から標高を求める
@@ -191,21 +224,6 @@ export const getElevations = async (lat1, lng1, lat2, lng2) => {
       break;
     }
   }
-
-  // 2つの間の座標の間の点を求める(再帰呼び出しして2^8個まで反復？)
-  const calcLine = (p1x, p1y, p2x, p2y, depth) => {
-    if (depth >= 7) {
-      return [p1x, p1y];
-    }
-    const x = (p1x + p2x) / 2;
-    const y = (p1y + p2y) / 2;
-    // return [x, y];
-    depth += 1;
-    return [
-      ...calcLine(p1x, p1y, x, y, depth),
-      ...calcLine(x, y, p2x, p2y, depth),
-    ];
-  };
 
   const [p1x, p1y] = [tile1.pX, tile1.pY];
   const [p2x, p2y] = [tile2.pX, tile2.pY];
