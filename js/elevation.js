@@ -107,13 +107,13 @@ export const calcTileInfo = (lat, lng, z) => {
 };
 
 /**
- * タイルを読み込みHTMLImageElementを返す
- *
- * @param {number} x
- * @param {number} y
- * @param {number} z
- * @param { {dataType: string, ext?: string} } option
- * @returns {Promise<CanvasRenderingContext2D>}
+ * 読み込んだタイルをCanvasに描画して返す
+ *　・色情報を取得できるようにするため、Canvasへ描画する
+ * @param {number} x タイルのx枚目
+ * @param {number} y タイルのy枚目
+ * @param {number} z zoomlevel
+ * @param { {dataType: string, ext?: string} } option タイルの種類
+ * @returns {Promise<CanvasRenderingContext2D>} CanvasのContext
  */
 export const loadTile = async (x, y, z, option) => {
   const { dataType, ext } = option;
@@ -121,10 +121,13 @@ export const loadTile = async (x, y, z, option) => {
   const url = `https://cyberjapandata.gsi.go.jp/xyz/${dataType}/${z}/${x}/${y}.${
     ext ?? 'png'
   }`;
+
+  // Image(HTMLImageElement)を利用して画像を取得
   const img = new Image();
   img.setAttribute('crossorigin', 'anonymous');
   img.src = url;
 
+  // 縦横256pixcelのCanvasを生成する
   const canvas = document.createElement('canvas');
   [canvas.width, canvas.height] = [256, 256];
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -132,11 +135,37 @@ export const loadTile = async (x, y, z, option) => {
   // onloadは非同期で発生するため、Promise()でラップして返す
   return new Promise((resolve, reject) => {
     img.onload = () => {
+      // 読み込んだ座標をCanvasに描画して返す
       ctx.drawImage(img, 0, 0);
 
       resolve(ctx);
     };
   });
+};
+
+/**
+ * 2つの間の座標の間の点を求める(再帰呼び出しで(2^maxDepth + 1)組)
+ * 傾きが垂直に近いと計算がしづらいので、2点間を再帰で分割する
+ * @param {number} p1x
+ * @param {number} p1y
+ * @param {number} p2x
+ * @param {number} p2y
+ * @param {number} maxDepth = 7
+ * @param {number} depth 現在の再帰の深さ
+ * @returns
+ */
+const pointToLine = (p1x, p1y, p2x, p2y, maxDepth = 7, depth = 0) => {
+  if (depth >= maxDepth) {
+    return [p1x, p1y];
+  }
+  const x = (p1x + p2x) / 2;
+  const y = (p1y + p2y) / 2;
+  depth += 1;
+  return [
+    ...pointToLine(p1x, p1y, x, y, maxDepth, depth),
+    ...pointToLine(x, y, p2x, p2y, maxDepth, depth),
+    ...(depth == 1 ? [p2x, p2y] : []),
+  ];
 };
 
 /**
@@ -179,31 +208,7 @@ export const getElevation = (pX, pY, ctx) => {
 };
 
 /**
- * 2つの間の座標の間の点を求める(再帰呼び出しして2^8個まで反復？)
- * 傾きが垂直に近いと計算がしづらいので、2点間を再帰で分割する
- * @param {*} p1x
- * @param {*} p1y
- * @param {*} p2x
- * @param {*} p2y
- * @param {*} depth
- * @returns
- */
-const pointToLine = (p1x, p1y, p2x, p2y, depth) => {
-  if (depth >= 7) {
-    return [p1x, p1y];
-  }
-  const x = (p1x + p2x) / 2;
-  const y = (p1y + p2y) / 2;
-  // return [x, y];
-  depth += 1;
-  return [
-    ...pointToLine(p1x, p1y, x, y, depth),
-    ...pointToLine(x, y, p2x, p2y, depth),
-  ];
-};
-
-/**
- * 方向を配列で取得する
+ * 2点間の標高を配列で取得する
  * @param {number} lat1
  * @param {number} lng1
  * @param {number} lat2
@@ -212,11 +217,11 @@ const pointToLine = (p1x, p1y, p2x, p2y, depth) => {
  */
 export const getElevations = async (lat1, lng1, lat2, lng2) => {
   let tile1, tile2, zoom;
-  // 経度、緯度から標高を求める
+  // 経度、緯度から2つのPixcelの距離が128～256になるzoomlevelを選択する
   for (zoom = 0; zoom <= 15; zoom++) {
     tile1 = calcTileInfo(lat1, lng1, zoom);
     tile2 = calcTileInfo(lat2, lng2, zoom);
-    // 2つのPixcelの位置が128～256になるまでzoomを増やす
+    // 2つのPixcelの距離が128～256になるまでzoomを増やす
     const distance = Math.sqrt(
       (tile1.pX - tile2.pX) ** 2 + (tile1.pY - tile2.pY) ** 2
     );
@@ -225,9 +230,8 @@ export const getElevations = async (lat1, lng1, lat2, lng2) => {
     }
   }
 
-  const [p1x, p1y] = [tile1.pX, tile1.pY];
-  const [p2x, p2y] = [tile2.pX, tile2.pY];
-  const line = [...calcLine(p1x, p1y, p2x, p2y, 0), p2x, p2y];
+  // 2つの座標の間を通る点の配列を算出する
+  const line = pointToLine(tile1.pX, tile1.pY, tile2.pX, tile2.pY);
 
   // 配列から値を取り出して、高さを取得し、別の配列に追加する
   let tiles = [];
@@ -241,8 +245,9 @@ export const getElevations = async (lat1, lng1, lat2, lng2) => {
     const imageCoordY = Math.floor(y - tileCoordY * 256);
 
     let context = null;
+    // 標高タイルの読み込み
+    // 一度読み込んだタイルはキャッシュする
     if (!tiles[`${tileCoordX}_${tileCoordY}`]) {
-      // 画像を読み込んで、標高を取得していく
       context = await loadTile(tileCoordX, tileCoordY, zoom, {
         dataType: 'dem5a_png',
       });
@@ -250,6 +255,7 @@ export const getElevations = async (lat1, lng1, lat2, lng2) => {
     } else {
       context = tiles[`${tileCoordX}_${tileCoordY}`];
     }
+    // タイルから標高を取得
     const h = getElevation(imageCoordX, imageCoordY, context);
     elevations.push(h);
   }
