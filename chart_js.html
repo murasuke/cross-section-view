@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1.0, ,user-scalable=no" />
-  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.2.1/chart.umd.js"></script>
   <script type="module">
     import { getElevations, getDistance } from './js/elevation.js';
     // 組み込み関数は変数に代入できないため、アロー関数でラップ
@@ -18,32 +18,57 @@
       const elevations = await getElevations(lat1, lng1, lat2, lng2);
       const ratio = distance / elevations.length;
 
+      // 縦：横＝1：2
+      // 横の半分を縦の最大値にセット
+
       const data = elevations.map((v, i) => {
           return {x: i * ratio, y: v};
       });
+      if (chart) {
+        chart.destroy();
+        chart = null;
+      }
+      chart = new Chart($('#chart'), {
+        type: 'scatter',
+        data: {
+          //labels: [...Array(elevations.length)].map((_, i) => i),
+          datasets: [{
+            label: 'Mt.Fuji',
+            backgroundColor: 'rgb(123, 99, 200)',
+            borderColor: 'rgb(123, 99, 200)',
+            data,
+            lineTension: 1,
+          }]
+        },
+        options: {
+          scales: {
+            //以下追加設定
+            x: {
+              scaleLabel: {
+                display: true,
+                labelString: "km"
+              },
+              ticks: {
+                callback: function (val, index) {
+                  return val % 5000 === 0 ? (val/1000).toFixed(2) + 'km' : '';
+                },
+                maxRotation: 0,
+                minRotation: 0,
+              }
+            },
+            y: {
+              min: 0,
+              max: Math.round(distance / 2),
+              ticks: {
+              callback: function(val, index) {
+                  return val + 'm';
+                }
+            }
+            },
 
-      const x = [];
-      const y = [];
-      elevations.forEach((v,i) => {
-        x.push(i * ratio);
-        y.push(v);
-      });
-
-      const trace1 = {
-        x,
-        y,
-        mode: 'markers',
-        type: 'scatter'
-      };
-
-      const layout = {
-        yaxis: {
-          scaleanchor: 'x',
+          }
         }
-      };
-
-      Plotly.newPlot('plotArea', [trace1], layout);
-
+      })
       $('#result').value = `距離：${distance.toFixed(2)}km\n`;
       $('#result').value += elevations.reduce(function (accumulator, currentValue) {
         return accumulator + '\n' + new String(currentValue);
@@ -70,7 +95,7 @@
     <div><input type="button" id="exec" value="断面図表示" style="margin:1em;"></div>
   </div>
   <div style="margin:2em;">
-    <div id="plotArea"></div>
+    <canvas id="chart"></canvas><br>
     <textarea id="result" rows="10" cols="30"></textarea>
   </div>
 

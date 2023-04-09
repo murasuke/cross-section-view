@@ -1,4 +1,73 @@
 /**
+ * 2座標間を線形補完して座標を求める
+ * ・標高は地理院タイルの(DEM5A)を利用
+ *   https://maps.gsi.go.jp/development/ichiran.html
+ */
+
+/**
+ * 2点間の標高を配列で取得する
+ * @param {number} lat1
+ * @param {number} lng1
+ * @param {number} lat2
+ * @param {number} lng2
+ * @returns
+ */
+export const getElevations = async (lat1, lng1, lat2, lng2) => {
+  let tile1, tile2, zoom;
+  // 経度、緯度から2つのPixcelの距離が128～256になるzoomlevelを選択する
+  for (zoom = 0; zoom <= 15; zoom++) {
+    tile1 = calcTileInfo(lat1, lng1, zoom);
+    tile2 = calcTileInfo(lat2, lng2, zoom);
+    // 2つのPixcelの距離が128～256になるまでzoomを増やす
+    const distance = Math.sqrt(
+      (tile1.pX - tile2.pX) ** 2 + (tile1.pY - tile2.pY) ** 2
+    );
+
+    if (distance > 128) {
+      break;
+    }
+  }
+
+  // 2点間を線形補完した座標を計算する
+  const line = lerp(tile1.pX, tile1.pY, tile2.pX, tile2.pY);
+
+  let tiles = []; // タイル読み込みキャッシュ
+  const elevations = []; // 標高の配列
+
+  // 補完した座標から、標高を取得して配列にセット
+  for (let i = 0; i < line.length; i += 2) {
+    const x = line[i];
+    const y = line[i + 1];
+
+    // タイルのindex
+    const tileCoordX = Math.floor(x / 256);
+    const tileCoordY = Math.floor(y / 256);
+    // タイル内の座標
+    const imageCoordX = Math.floor(x - tileCoordX * 256);
+    const imageCoordY = Math.floor(y - tileCoordY * 256);
+
+    let context = null; // タイルを描画したCanvas
+    if (!tiles[`${tileCoordX}_${tileCoordY}`]) {
+      // 標高タイルの読み込み
+      context = await loadTile(tileCoordX, tileCoordY, zoom, {
+        dataType: 'dem5a_png',
+      });
+      // 一度読み込んだタイルはキャッシュする
+      tiles[`${tileCoordX}_${tileCoordY}`] = context;
+    } else {
+      // キャッシュからタイルを取り出す
+      context = tiles[`${tileCoordX}_${tileCoordY}`];
+    }
+
+    // タイルから標高を取得
+    const h = elevationFromTile(imageCoordX, imageCoordY, context);
+    elevations.push(h);
+  }
+
+  return elevations;
+};
+
+/**
  * 経度から座標(タイルとタイル内pixcel)を計算
  * @param {number} lng 経度
  * @param {number} z zoomlevel
@@ -144,8 +213,9 @@ export const loadTile = async (x, y, z, option) => {
 };
 
 /**
- * 2つの間の座標の間の点を求める(再帰呼び出しで(2^maxDepth + 1)組)
- * 傾きが垂直に近いと計算がしづらいので、2点間を再帰で分割する
+ * 2点間の線形補完
+ * 垂直でも計算しやすいので、中間の点を求めて再帰で分割
+ * ・(2^再帰の深さ + 1)に分割する
  * @param {number} p1x
  * @param {number} p1y
  * @param {number} p2x
@@ -154,7 +224,7 @@ export const loadTile = async (x, y, z, option) => {
  * @param {number} depth 現在の再帰の深さ
  * @returns
  */
-const pointToLine = (p1x, p1y, p2x, p2y, maxDepth = 7, depth = 0) => {
+const lerp = (p1x, p1y, p2x, p2y, maxDepth = 7, depth = 0) => {
   if (depth >= maxDepth) {
     return [p1x, p1y];
   }
@@ -162,9 +232,9 @@ const pointToLine = (p1x, p1y, p2x, p2y, maxDepth = 7, depth = 0) => {
   const y = (p1y + p2y) / 2;
   depth += 1;
   return [
-    ...pointToLine(p1x, p1y, x, y, maxDepth, depth),
-    ...pointToLine(x, y, p2x, p2y, maxDepth, depth),
-    ...(depth == 1 ? [p2x, p2y] : []),
+    ...lerp(p1x, p1y, x, y, maxDepth, depth),
+    ...lerp(x, y, p2x, p2y, maxDepth, depth),
+    ...(depth == 1 ? [p2x, p2y] : []), // 一番右端
   ];
 };
 
@@ -175,7 +245,7 @@ const pointToLine = (p1x, p1y, p2x, p2y, maxDepth = 7, depth = 0) => {
  * @param {CanvasRenderingContext2D}
  * @returns {Promise<number>}
  */
-export const getElevation = (pX, pY, ctx) => {
+export const elevationFromTile = (pX, pY, ctx) => {
   const z = 15;
 
   const { data } = ctx.getImageData(0, 0, 256, 256);
@@ -208,63 +278,7 @@ export const getElevation = (pX, pY, ctx) => {
 };
 
 /**
- * 2点間の標高を配列で取得する
- * @param {number} lat1
- * @param {number} lng1
- * @param {number} lat2
- * @param {number} lng2
- * @returns
- */
-export const getElevations = async (lat1, lng1, lat2, lng2) => {
-  let tile1, tile2, zoom;
-  // 経度、緯度から2つのPixcelの距離が128～256になるzoomlevelを選択する
-  for (zoom = 0; zoom <= 15; zoom++) {
-    tile1 = calcTileInfo(lat1, lng1, zoom);
-    tile2 = calcTileInfo(lat2, lng2, zoom);
-    // 2つのPixcelの距離が128～256になるまでzoomを増やす
-    const distance = Math.sqrt(
-      (tile1.pX - tile2.pX) ** 2 + (tile1.pY - tile2.pY) ** 2
-    );
-    if (distance > 128) {
-      break;
-    }
-  }
-
-  // 2つの座標の間を通る点の配列を算出する
-  const line = pointToLine(tile1.pX, tile1.pY, tile2.pX, tile2.pY);
-
-  // 配列から値を取り出して、高さを取得し、別の配列に追加する
-  let tiles = [];
-  const elevations = [];
-  for (let i = 0; i < line.length; i += 2) {
-    const x = line[i];
-    const y = line[i + 1];
-    const tileCoordX = Math.floor(x / 256);
-    const tileCoordY = Math.floor(y / 256);
-    const imageCoordX = Math.floor(x - tileCoordX * 256);
-    const imageCoordY = Math.floor(y - tileCoordY * 256);
-
-    let context = null;
-    // 標高タイルの読み込み
-    // 一度読み込んだタイルはキャッシュする
-    if (!tiles[`${tileCoordX}_${tileCoordY}`]) {
-      context = await loadTile(tileCoordX, tileCoordY, zoom, {
-        dataType: 'dem5a_png',
-      });
-      tiles[`${tileCoordX}_${tileCoordY}`] = context;
-    } else {
-      context = tiles[`${tileCoordX}_${tileCoordY}`];
-    }
-    // タイルから標高を取得
-    const h = getElevation(imageCoordX, imageCoordY, context);
-    elevations.push(h);
-  }
-  return elevations;
-};
-
-/**
- * calculate distance in kilometers between two points specified by degrees of latitude and longitude
- *
+ * 2点間の距離を計算する(km)
  * @author @kawanet
  * @license MIT
  * @see https://gist.github.com/kawanet/15c5a260ca3b98bd080bb87cdae57230
@@ -274,7 +288,6 @@ export const getElevations = async (lat1, lng1, lat2, lng2) => {
  * @param {number} lng2 - degree of longitude of destination
  * @return {number} distance in kilometers between origin and destination
  */
-
 export const getDistance = (lat1, lng1, lat2, lng2) => {
   lat1 *= Math.PI / 180;
   lng1 *= Math.PI / 180;
