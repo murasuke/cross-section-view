@@ -93,49 +93,6 @@ export const calcCoordX = (lng, z) => {
     imageCoordX,
   };
 };
-
-/**
- * 緯度から座標(タイルとタイル内pixcel)を計算
- * メルカトル図法で緯度から位置を算出する式 (https://qiita.com/Seo-4d696b75/items/aa6adfbfba404fcd65aa)
- *  R ln(tan(π/4 + ϕ/2))
- *    R: 半径
- *    ϕ: 緯度(ラジアン)
- * @param {number} lat 緯度
- * @param {number} z zoomlevel
- * @returns
- */
-export const calcCoordY = (lat, z) => {
-  // ラジアン
-  const lat_rad = (Math.PI / 180) * lat;
-
-  // zoomレベル0の場合、256pxで360度(2PIラジアン)
-  //  ⇒ ラジアンあたりpxを計算
-  const R = 256 / (2 * Math.PI);
-
-  // メルカトル図法で緯度から位置を算出
-  let worldCoordY = R * Math.log(Math.tan(Math.PI / 4 + lat_rad / 2));
-
-  // 赤道からの位置(北緯)で計算しているので、左上を原点とするため軸を逆転＋北極側を原点に換算
-  worldCoordY = -1 * worldCoordY + 128;
-
-  // 256px換算で計算した値にzoomをかけて、zoomで換算した画像の位置を計算
-  const pixelCoordY = worldCoordY * Math.pow(2, z);
-
-  // 1つの画像が256pxなので、256で割って左端からの画像の枚数(位置)を求める
-  // 0オリジンなので切り捨て
-  const tileCoordY = Math.floor(pixelCoordY / 256);
-
-  // 上側のタイル幅合計を引いて、表示タイル内のpx位置を算出する
-  const imageCoordY = Math.floor(pixelCoordY - tileCoordY * 256);
-
-  // 計算した値を返す
-  return {
-    worldCoordY,
-    pixelCoordY,
-    tileCoordY,
-    imageCoordY,
-  };
-};
 ```
 
 * 緯度から座標(タイルとタイル内pixcel)を計算
@@ -407,7 +364,7 @@ export const getElevations = async (lat1, lng1, lat2, lng2) => {
 
 2点間の距離を計算し、x軸を距離、y軸を標高にしてグラフ化します。
 
-![img10](./img/img10.png)
+![img20](./img/img20.png)
 
 x軸とy軸の比率(ratio)を合わせるため、[plotly](https://plotly.com/javascript/)を利用しました。
 ([Chart.js](https://www.chartjs.org/)の方が、簡単できれいですが軸の比率を合わせる方法がわからなかったため)
