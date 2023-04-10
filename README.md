@@ -6,10 +6,12 @@
 
 最も高精度な`DEM5A`を利用します。(一部データがない場所がありますが、低精度のタイルへのフォールバックはしていません)
 
+[動作確認ページ](https://murasuke.github.io/cross-section-view/)
+
+
 * 利用サンプル
 ![img20](./img/img20.png)
 
-[動作確認ページ](https://murasuke.github.io/cross-section-view/)
 
 ## 国土地理院タイルの特徴
 
