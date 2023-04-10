@@ -47,9 +47,9 @@
 
 1. 経度緯度から座標へ変換 ⇒ 座標から標高画像タイルとタイル内の位置を算出
 2. タイルの位置を元にタイル画像を読み込みCanvasへ描画(pixcelの色情報を取得するため)
-3. 2点間を線形補正して座標の配列を求める
-4. 画像ピクセルの色情報から、標高へ変換
-5. 2点間の座標の配列全ての標高を算出し配列にする
+3. 画像の特定ピクセルの色情報から、標高へ変換する関数を作成
+4. 2点間を線形補正して座標の配列を求める
+5. 2点間座標から標高を算出する
 
 
 ### 1. 経緯から座標へ変換 ⇒ 座標から標高画像タイルとタイル内の位置を算出
@@ -221,40 +221,7 @@ export const loadTile = async (x, y, z, option) => {
 ```
 
 
-
-### 3. 2点間を線形補正して座標の配列を求める
-
-```javascript
-/**
- * 2点間の線形補完
- * 垂直でも計算しやすいので、中間の点を求めて再帰で分割
- * ・(2^再帰の深さ + 1)に分割する
- * @param {number} p1x
- * @param {number} p1y
- * @param {number} p2x
- * @param {number} p2y
- * @param {number} maxDepth = 7
- * @param {number} depth 現在の再帰の深さ
- * @returns
- */
-const lerp = (p1x, p1y, p2x, p2y, maxDepth = 7, depth = 0) => {
-  if (depth >= maxDepth) {
-    return [p1x, p1y];
-  }
-  const x = (p1x + p2x) / 2;
-  const y = (p1y + p2y) / 2;
-  depth += 1;
-  return [
-    ...lerp(p1x, p1y, x, y, maxDepth, depth),
-    ...lerp(x, y, p2x, p2y, maxDepth, depth),
-    ...(depth == 1 ? [p2x, p2y] : []), // 一番右端
-  ];
-};
-```
-
-
-
-### 4. 画像ピクセルの色情報から、標高へ変換
+### 3. 画像の特定ピクセルの色情報から、標高へ変換する関数を作成
 ```javascript
 /**
  * 標高タイルの色情報から標高を算出
@@ -296,7 +263,39 @@ export const elevationFromTile = (pX, pY, ctx) => {
 };
 ```
 
-### 5. 2点間の座標の配列全ての標高を算出し配列にする
+### 4. 2点間を線形補正して座標の配列を求める
+
+```javascript
+/**
+ * 2点間の線形補完
+ * 垂直でも計算しやすいので、中間の点を求めて再帰で分割
+ * ・(2^再帰の深さ + 1)に分割する
+ * @param {number} p1x
+ * @param {number} p1y
+ * @param {number} p2x
+ * @param {number} p2y
+ * @param {number} maxDepth = 7
+ * @param {number} depth 現在の再帰の深さ
+ * @returns
+ */
+const lerp = (p1x, p1y, p2x, p2y, maxDepth = 7, depth = 0) => {
+  if (depth >= maxDepth) {
+    return [p1x, p1y];
+  }
+  const x = (p1x + p2x) / 2;
+  const y = (p1y + p2y) / 2;
+  depth += 1;
+  return [
+    ...lerp(p1x, p1y, x, y, maxDepth, depth),
+    ...lerp(x, y, p2x, p2y, maxDepth, depth),
+    ...(depth == 1 ? [p2x, p2y] : []), // 一番右端
+  ];
+};
+```
+
+
+
+### 5. 2点間座標から標高を算出する
 
 ```javascript
 
