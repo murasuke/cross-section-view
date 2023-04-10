@@ -372,6 +372,7 @@ export const getElevations = async (lat1, lng1, lat2, lng2) => {
 x軸とy軸の比率(ratio)を合わせるため、[plotly](https://plotly.com/javascript/)を利用しました。
 ([Chart.js](https://www.chartjs.org/)の方が、簡単できれいですが軸の比率を合わせる方法がわからなかったため)
 
+手順
 1. 2点間の標高の配列を計算(前項を参照)
 2. 2点間の距離を計算
 3. グラフ表示用に、x:距離、y:標高を表すデータを生成する
@@ -379,6 +380,10 @@ x軸とy軸の比率(ratio)を合わせるため、[plotly](https://plotly.com/j
 
 ### 2点間の距離を計算
 
+https://gist.github.com/kawanet/15c5a260ca3b98bd080bb87cdae57230
+のコードを利用
+
+[大円距離](https://ja.wikipedia.org/wiki/%E5%A4%A7%E5%86%86%E8%B7%9D%E9%9B%A2)を求めています
 ```javascript
 /**
  * 2点間の距離を計算する(km)
@@ -407,6 +412,9 @@ export const getDistance = (lat1, lng1, lat2, lng2) => {
 ```
 
 ### 2点間の断面図を表示([plotly](https://plotly.com/javascript/)を利用)
+
+処理はコメント参照
+* 倍率でy軸方向に引き伸ばします
 
 ```html
 <!DOCTYPE html>
@@ -474,7 +482,7 @@ export const getDistance = (lat1, lng1, lat2, lng2) => {
         },
         yaxis: {
           scaleanchor: 'x', // グラフの縦横比を等倍にする
-          scaleratio: ratio,
+          scaleratio: ratio,// x軸に対する倍率
           rangemode: 'tozero',
           title: '標高',
           ticksuffix:"m",
