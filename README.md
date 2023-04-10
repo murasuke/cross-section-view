@@ -9,6 +9,7 @@
 * 利用サンプル
 ![img20](./img/img20.png)
 
+[動作確認ページ](https://murasuke.github.io/cross-section-view/)
 
 ## 国土地理院タイルの特徴
 
