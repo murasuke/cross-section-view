@@ -41,9 +41,13 @@
           }]
         },
         options: {
+          responsive: false,
+          aspectRatio: 1,
           scales: {
             //以下追加設定
             x: {
+              min: 0,
+              max: distance,
               scaleLabel: {
                 display: true,
                 labelString: "km"
@@ -58,7 +62,7 @@
             },
             y: {
               min: 0,
-              max: Math.round(distance / 2),
+              max: distance,
               ticks: {
               callback: function(val, index) {
                   return val + 'm';
@@ -95,7 +99,7 @@
     <div><input type="button" id="exec" value="断面図表示" style="margin:1em;"></div>
   </div>
   <div style="margin:2em;">
-    <canvas id="chart"></canvas><br>
+    <canvas id="chart" width="600"></canvas><br>
     <textarea id="result" rows="10" cols="30"></textarea>
   </div>
 
