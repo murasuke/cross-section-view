@@ -4,6 +4,27 @@
  *   https://maps.gsi.go.jp/development/ichiran.html
  */
 
+const mapTypes = [
+  'dem5a_png', // 航空レーザ測量
+  'dem5b_png', // 写真測量
+  'dem5c_png', // 写真測量
+  'dem_png', // 1/2.5万地形図等高線
+  'demgm_png', //　地球地図全球版標高
+];
+
+/**
+ * 特定の座標の標高を求める
+ * @param lat1
+ * @param lng1
+ * @param zoom
+ * @returns
+ */
+export const getElevation = async (lat1, lng1, zoom = 13) => {
+  const tile = calcTileInfo(lat1, lng1, zoom);
+  const h = await elevations([tile.pX, tile.pY], zoom);
+  return h[0];
+};
+
 /**
  * 2点間の標高を配列で取得する
  * @param {number} lat1
@@ -45,7 +66,7 @@ const lerp = (p1x, p1y, p2x, p2y, maxDepth = 7, depth = 0) => {
   return [
     ...lerp(p1x, p1y, x, y, maxDepth, depth),
     ...lerp(x, y, p2x, p2y, maxDepth, depth),
-    ...(depth == 1 ? [p2x, p2y] : []), // 一番右端
+    ...(depth === 1 ? [p2x, p2y] : []), // 一番右端
   ];
 };
 
@@ -59,20 +80,23 @@ const lerp = (p1x, p1y, p2x, p2y, maxDepth = 7, depth = 0) => {
  * @returns
  */
 const adjustZoom = (lat1, lng1, lat2, lng2) => {
-  let tile1, tile2, zoom;
-  for (zoom = 0; zoom <= 15; zoom++) {
-    tile1 = calcTileInfo(lat1, lng1, zoom);
-    tile2 = calcTileInfo(lat2, lng2, zoom);
+  for (let zoom = 0; zoom <= 15; zoom++) {
+    const tile1 = calcTileInfo(lat1, lng1, zoom);
+    const tile2 = calcTileInfo(lat2, lng2, zoom);
     // 2つのPixcelの距離が128～256になるまでzoomを増やす
     const distance = Math.sqrt(
       (tile1.pX - tile2.pX) ** 2 + (tile1.pY - tile2.pY) ** 2
     );
 
     if (distance > 128) {
-      break;
+      return {
+        tile1,
+        tile2,
+        zoom,
+      };
     }
   }
-  return { tile1, tile2, zoom };
+  return null;
 };
 
 /**
@@ -82,15 +106,6 @@ const adjustZoom = (lat1, lng1, lat2, lng2) => {
  * @returns
  */
 const elevations = async (line, zoom) => {
-  // 一部標高情報場ない場所があるため、精度の高い順に取得
-  // https://maps.gsi.go.jp/development/ichiran.html
-  const mapTypes = [
-    'dem5a_png', // 航空レーザ測量
-    'dem5b_png', // 写真測量
-    'dem5c_png', // 写真測量
-    'dem_png', // 1/2.5万地形図等高線
-    'demgm_png', //　地球地図全球版標高
-  ];
   const tiles = []; // タイル読み込みキャッシュ
   const elevations = []; // 標高の配列
 
@@ -102,9 +117,6 @@ const elevations = async (line, zoom) => {
     // タイルのindex
     const tileX = Math.floor(x / 256);
     const tileY = Math.floor(y / 256);
-    // タイル内の座標
-    const imageX = Math.floor(x - tileX * 256);
-    const imageY = Math.floor(y - tileY * 256);
 
     let height = undefined;
     for (let map of mapTypes) {
@@ -125,6 +137,10 @@ const elevations = async (line, zoom) => {
         // キャッシュからタイルを取り出す
         context = tiles[`${map}_${tileX}_${tileY}`];
       }
+
+      // タイル内の座標
+      const imageX = Math.floor(x - tileX * 256);
+      const imageY = Math.floor(y - tileY * 256);
 
       // タイルから標高を取得
       height = elevationFromTile(imageX, imageY, context);
@@ -280,6 +296,7 @@ export const loadTile = async (x, y, z, option) => {
     img.onload = () => {
       // 読み込んだ座標をCanvasに描画して返す
       ctx.drawImage(img, 0, 0);
+
       resolve(ctx);
     };
   });
@@ -293,8 +310,6 @@ export const loadTile = async (x, y, z, option) => {
  * @returns {Promise<number>}
  */
 export const elevationFromTile = (pX, pY, ctx) => {
-  const z = 15;
-
   const { data } = ctx.getImageData(0, 0, 256, 256);
   // 1pxあたり4Byte(RGBA)
   const idx = pY * 256 * 4 + pX * 4;
@@ -315,7 +330,7 @@ export const elevationFromTile = (pX, pY, ctx) => {
   const x = r * 2 ** 16 + g * 2 ** 8 + b;
   if (x < 2 ** 23) {
     h = x * resolution;
-  } else if (x == 2 ** 23) {
+  } else if (x === 2 ** 23) {
     h = undefined;
   } else if (x > 2 ** 23) {
     h = x - 2 ** 24 * resolution;
